@@ -2,7 +2,6 @@ import json
 from typing import Any, Callable
 
 import yaml
-from loguru import logger
 
 
 class ProjectBaseConfig:
@@ -33,6 +32,7 @@ class FtpServerConfig(ProjectBaseConfig):
     username: str
     password: str
     basedir: str
+    blockSize: int
 
     def __init__(self, variables: dict[str, Any]) -> None:
         super().__init__(variables)

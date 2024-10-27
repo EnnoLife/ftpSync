@@ -1,6 +1,7 @@
 import ftplib
 import logging
 import os
+import time
 from typing import Callable, Any
 
 from config import Config
@@ -9,6 +10,10 @@ from config import Config
 class FtpSync:
     config: Config
     ftpClient: ftplib.FTP
+    fileCount: int
+    downloadCount: int
+    directoryCount: int
+    totalBlocks: int
 
     def __init__(self, config: Config):
         self.config = config
@@ -52,6 +57,11 @@ class FtpSync:
             print(file[leading:])
 
     def recursive_copy(self, working_dir: str):
+        number_of_files = 0
+        number_of_directories = 0
+        number_of_downloads = 0
+        total_blocks = 0
+
         if working_dir == '':
             ftp_dir = self.config.ftpServer.basedir
             target_dir = self.config.targetDir
@@ -68,25 +78,64 @@ class FtpSync:
                     stored_dir = os.path.join(target_dir, filename)
 
                     os.makedirs(stored_dir, 0o755, exist_ok=True)
+                    self.directoryCount += 1
+                    number_of_directories += 1
                     self.recursive_copy(os.path.join(working_dir, filename))
                 elif details['type'] == 'file':
                     target_file = os.path.join(target_dir, filename)
+                    self.fileCount += 1
+                    number_of_files += 1
+
+                    ftp_file_size = -1
+
+                    if 'size' in details:
+                        ftp_file_size = int(details['size'])
+                        blocks = (
+                                             ftp_file_size + self.config.ftpServer.blockSize - 1) // self.config.ftpServer.blockSize
+                        total_blocks += blocks
+                        self.totalBlocks += blocks
+
+                    should_i_download = True
 
                     if os.path.isfile(target_file):
-                        print(f'file exists {details["type"]}: {filename} ({working_dir})')
-                    else:
+                        if ftp_file_size >= 0:
+                            file_size = os.path.getsize(target_file)
+                            if file_size == ftp_file_size:
+                                should_i_download = False
+                                # print(f'file exists {details["type"]}: {filename} ({working_dir})')
+
+                    if should_i_download:
                         print(f'download {details["type"]}: {filename} ({working_dir})')
                         self.download_file(os.path.join(ftp_dir, filename), target_file)
+                        self.downloadCount += 1
+                        number_of_downloads += 1
+        print(
+            f'{working_dir}: {number_of_directories} directories, {number_of_files} files ({self.mb(total_blocks): .0f} MB ), {number_of_downloads} downloads')
 
-
-
-
-    def handler(self, filename: str, details: dict[str, Any]):
-        if 'type' in details:
-            if details['type'] == 'dir':
-                print(filename)
+    def mb(self, blocks: int) -> float:
+        return blocks * self.config.ftpServer.blockSize / 1024.0 / 1024.0
 
     def sync(self):
+        self.fileCount = 0
+        self.downloadCount = 0
+        self.directoryCount = 0
+        self.totalBlocks = 0
+
+        start_time = time.time()
+
         self.connect_to_ftp_tls()
         self.recursive_copy('')
         self.ftpClient.quit()
+
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+
+        hours = elapsed_time // 3600
+        minutes = (elapsed_time % 3600) // 60
+        seconds = elapsed_time % 60
+
+        print()
+        print(f"{self.directoryCount} directories")
+        print(f"{self.fileCount} files, {self.mb(self.totalBlocks): .0f} MBytes")
+        print(f"{self.downloadCount} files downloaded")
+        print(f"Elapsed time: {hours:.0f} hours {minutes:.0f} minutes {seconds:.0f} seconds")

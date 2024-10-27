@@ -3,5 +3,6 @@ ftpServer:
   username: anonymous
   password: password
   basedir: /
+  blockSize: 4096
 
 targetDir: /path/to/target
