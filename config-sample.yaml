@@ -1,0 +1,7 @@
+ftpServer:
+  host: ftp.hostname.com
+  username: anonymous
+  password: password
+  basedir: /
+
+targetDir: /path/to/target
